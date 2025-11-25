@@ -151,7 +151,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounding DINO example", add_help=True)
     parser.add_argument("--config_file", "-c", type=str,default="groundingdino/config/GroundingDINO_SwinT_OGC.py"),#, required=True, help="path to config file")
     parser.add_argument(
-        "--checkpoint_path", "-p", default="weights/groundingdino_swint_ogc.pth"),#,type=str, required=True, help="path to checkpoint file"
+        "--checkpoint_path", "-p", default="weights/groundingdino_swint_ogc.pth"),#,type=str, required=True, help="path to checkpoint file")
     parser.add_argument("--image_path", "-i", default="inputs/2_142_in.bmp"),#, type=str, required=True, help="path to image file")
     parser.add_argument("--text_prompt", "-t",default="Car"),# type=str, required=True, help="text prompt")
     parser.add_argument(
@@ -206,7 +206,31 @@ if __name__ == "__main__":
         "boxes": boxes_filt,
         "size": [size[1], size[0]],  # H,W
         "labels": pred_phrases,
+        "scores": torch.ones(len(boxes_filt))  # <<< ADDITION 1 (dummy scores so labels draw)
     }
     # import ipdb; ipdb.set_trace()
     image_with_box = plot_boxes_to_image(image_pil, pred_dict)[0]
     image_with_box.save(os.path.join(output_dir, "pred.jpg"))
+
+    # ------------------------------------------------------------
+    # ADDITION 2: Write YOLO label file (corrected)
+    # ------------------------------------------------------------
+    # boxes_filt are normalized (cx, cy, w, h) in range ~[0,1] in this codebase,
+    # so write them directly as YOLO normalized values.
+    yolo_label_path = os.path.join(output_dir, "pred.txt")
+
+    with open(yolo_label_path, "w") as f:
+        for box in boxes_filt:
+            # box is normalized [cx, cy, w, h]
+            cx, cy, bw, bh = box.tolist()
+
+            # sanitize values to be within [0,1] and ensure positive width/height
+            cx = float(max(0.0, min(1.0, cx)))
+            cy = float(max(0.0, min(1.0, cy)))
+            bw = float(abs(bw))
+            bh = float(abs(bh))
+            bw = max(1e-6, min(1.0, bw))
+            bh = max(1e-6, min(1.0, bh))
+
+            class_id = 0  # all detected "Car" -> same class id
+            f.write(f"{class_id} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
